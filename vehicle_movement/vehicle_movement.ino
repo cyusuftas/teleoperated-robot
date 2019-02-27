@@ -7,7 +7,7 @@
 #include <RF24.h>
 //#include <math.h>
 
-RF24 radio(7, 8); // CE, CSN
+RF24 radio(9, 10); // CE, CSN
 const byte address[6] = "00001";
 
 struct Message{
@@ -26,27 +26,44 @@ long ch2;
 
 int rot_in = 0;
 
+int m1_in1 = 4;
+int m1_in2 = 5;
+int m1_en = 6;
+int m2_in1 = 22;
+int m2_in2 = 24;
+int m2_en = 7;
+int m3_in1 = 26;
+int m3_in2 = 28;
+int m3_en = 8;
 
 void setup() {
   Serial.begin(9600);
   radio.begin();
   radio.openReadingPipe(0, address);
-  radio.setPALevel(RF24_PA_MIN);
+  radio.setPALevel(RF24_PA_MAX);
   radio.startListening();
 
-  pinMode(22,OUTPUT);     //motor1 in1 
-  pinMode(24,OUTPUT);     //motor1 in2
-  pinMode(3,OUTPUT);     //motor1 enA
-  pinMode(31,OUTPUT);     //motor2 in3 
-  pinMode(33,OUTPUT);     //motor2 in4
-  pinMode(4,OUTPUT);     //motor2 enB
-  pinMode(38,OUTPUT);     //motor3 in3
-  pinMode(40,OUTPUT);     //motor3 in4
-  pinMode(5,OUTPUT);     //motor3 enB
+  pinMode(m1_in1,OUTPUT);     //motor1 in1 
+  pinMode(m1_in2,OUTPUT);     //motor1 in2
+  pinMode(m1_en,OUTPUT);     //motor1 enA
+  pinMode(m2_in1,OUTPUT);     //motor2 in3 
+  pinMode(m2_in2,OUTPUT);     //motor2 in4
+  pinMode(m2_en,OUTPUT);     //motor2 enB
+  pinMode(m3_in1,OUTPUT);     //motor3 in3
+  pinMode(m3_in2,OUTPUT);     //motor3 in4
+  pinMode(m3_en,OUTPUT);     //motor3 enB
+
+  pinMode(12,OUTPUT);
 }
 void loop() {
   if(radio.available()) {
     radio.read(&k, sizeof(k));
+  }
+
+  if(k.js_button){
+    digitalWrite(12,HIGH);
+  }else{
+    digitalWrite(12,LOW);
   }
 
   ch1 = k.js0 - 127;
@@ -90,53 +107,53 @@ void loop() {
     float w2 = 0.5*Vx + sqrt3o2 * Vy; 
 
     if(w0 < 0){
-      digitalWrite(22,LOW);
-      digitalWrite(24,HIGH);
+      digitalWrite(m1_in1,LOW);
+      digitalWrite(m1_in2,HIGH);
     }else{
-      digitalWrite(22,HIGH);
-      digitalWrite(24,LOW);
+      digitalWrite(m1_in1,HIGH);
+      digitalWrite(m1_in2,LOW);
     }
 
     if(w1 < 0){
-      digitalWrite(31,LOW);
-      digitalWrite(33,HIGH);
+      digitalWrite(m2_in1,LOW);
+      digitalWrite(m2_in2,HIGH);
     }else{
-      digitalWrite(31,HIGH);
-      digitalWrite(33,LOW);
+      digitalWrite(m2_in1,HIGH);
+      digitalWrite(m2_in2,LOW);
     }
 
     if(w2 < 0){
-      digitalWrite(38,LOW);
-      digitalWrite(40,HIGH);
+      digitalWrite(m3_in1,LOW);
+      digitalWrite(m3_in2,HIGH);
     }else{
-      digitalWrite(38,HIGH);
-      digitalWrite(40,LOW);
+      digitalWrite(m3_in1,HIGH);
+      digitalWrite(m3_in2,LOW);
     }
 
     byte w0_speed = (byte) map(abs(w0), 0, 127, 0, 255);
     byte w1_speed = (byte) map(abs(w1), 0, 127, 0, 255);
     byte w2_speed = (byte) map(abs(w2), 0, 127, 0, 255);
 
-    analogWrite(3,w0_speed);
-    analogWrite(4,w1_speed);
-    analogWrite(5,w2_speed);    
+    analogWrite(m1_en,w0_speed);
+    analogWrite(m2_en,w1_speed);
+    analogWrite(m3_en,w2_speed);    
   }else if(rot_in < 100 || rot_in > 150){
     if(k.js2 < 127){
     mag = (127 - k.js2) * 2;
-    digitalWrite(22,LOW);
-    digitalWrite(24,HIGH);
-    digitalWrite(31,LOW);
-    digitalWrite(33,HIGH);
-    digitalWrite(38,LOW);
-    digitalWrite(40,HIGH);
+    digitalWrite(m1_in1,LOW);
+    digitalWrite(m1_in2,HIGH);
+    digitalWrite(m2_in1,LOW);
+    digitalWrite(m2_in2,HIGH);
+    digitalWrite(m3_in1,LOW);
+    digitalWrite(m3_in2,HIGH);
   }else{
     mag = (k.js2 - 127) * 2;
-    digitalWrite(22,HIGH);
-    digitalWrite(24,LOW);
-    digitalWrite(31,HIGH);
-    digitalWrite(33,LOW);
-    digitalWrite(38,HIGH);
-    digitalWrite(40,LOW);
+    digitalWrite(m1_in1,HIGH);
+    digitalWrite(m1_in2,LOW);
+    digitalWrite(m2_in1,HIGH);
+    digitalWrite(m2_in2,LOW);
+    digitalWrite(m3_in1,HIGH);
+    digitalWrite(m3_in2,LOW);
   }
   
   
@@ -149,13 +166,13 @@ void loop() {
 
   Serial.println(mag);
 
-  analogWrite(3,mag);
-  analogWrite(4,mag);
-  analogWrite(5,mag);
+  analogWrite(m1_en,mag);
+  analogWrite(m2_en,mag);
+  analogWrite(m3_en,mag);
   }else{
-    analogWrite(3,0);
-    analogWrite(4,0);
-    analogWrite(5,0);
+    analogWrite(m1_en,0);
+    analogWrite(m2_en,0);
+    analogWrite(m3_en,0);
   }
   
 /* rotational motion by using a joystick axis:
