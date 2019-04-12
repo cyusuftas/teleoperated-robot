@@ -3,7 +3,7 @@ import serial, time, struct
 import pickle
 
 #arduinoData = serial.Serial('COM4',9600)
-#ser = serial.Serial('COM29', 9600)
+ser = serial.Serial('COM29', 9600)
 
 #wait for serial connection before write operation
 time.sleep(1)
@@ -43,7 +43,7 @@ pygame.init()
 size = [500, 700]
 screen = pygame.display.set_mode(size)
 
-pygame.display.set_caption("My Game")
+pygame.display.set_caption("S1G6")
 
 #Loop until the user clicks the close button.
 done = False
@@ -58,17 +58,36 @@ pygame.joystick.init()
 textPrint = TextPrint()
 
 #declare an array holding joystick values
-js = [0,0,0,0,0]
+js = [0,0,0,0,0,0]
 #global state
 #global state_changed
 #global current_state_index
 
 current_state_index = 0
-state = [0, 0, 0]       #st_var0, st_var1, st_var_2
+state = [6, 80,100, 1, 1, 0, 0, 0, 0]       #rate, rot_speed, veh_speed, show_js, show_vehicle, m0_rpm, m1_rpm, m2_rpm, battery
+#try to read parameters saved to a file
+try:
+    fp = open("parameters.pkl")
+    parameters = pickle.load(fp)
+    state[0] = parameters["rate"]
+    state[1] = parameters["rot_speed"]
+    state[2] = parameters["veh_speed"]
+    state[3] = parameters["show_js"]
+    state[4] = parameters["show_vehicle"]
+    
+except:
+    print "An exception occurred"
+
 button1_pressed = False
 button5_pressed = False
 button2_pressed = False
 button0_pressed = False
+
+count = 0
+rcv_data = [0, 0, 0]    #param_A, param_B, param_C
+updated = False
+rate2 = 5
+
 # -------- Main Program Loop -----------
 while done==False:
     # EVENT PROCESSING STEP
@@ -139,7 +158,17 @@ while done==False:
                 if(not button1_pressed):
                     if(button):
                         print "button 1 pressed"
-                        state[current_state_index] += 1
+                        if current_state_index == 1:
+                            state[current_state_index] += 10
+                        elif current_state_index == 2:
+                            state[current_state_index] += 5
+                        elif current_state_index == 3 or current_state_index == 4:
+                            if state[current_state_index] == 1:
+                                state[current_state_index] = 0
+                            else:
+                                state[current_state_index] = 1
+                        else:
+                            state[current_state_index] += 1
                         button1_pressed = True
             if i == 5:
                 if(not button):
@@ -147,7 +176,17 @@ while done==False:
                 if(not button5_pressed):
                     if(button):
                         print "button 5 pressed"
-                        state[current_state_index] -= 1
+                        if current_state_index == 1:
+                            state[current_state_index] -= 10
+                        elif current_state_index == 2:
+                            state[current_state_index] -= 5
+                        elif current_state_index == 3 or current_state_index == 4:
+                            if state[current_state_index] == 1:
+                                state[current_state_index] = 0
+                            else:
+                                state[current_state_index] = 1
+                        else:
+                            state[current_state_index] -= 1
                         button5_pressed = False
             if i == 2:
                 if(not button):
@@ -155,7 +194,7 @@ while done==False:
                 if(not button2_pressed):
                     if(button):
                         print "button 2 pressed"
-                        if(current_state_index == 2):
+                        if(current_state_index == 4):
                             current_state_index = 0
                         else:
                             current_state_index += 1
@@ -168,7 +207,7 @@ while done==False:
                     if(button):
                         print "button 0 pressed"
                         if(current_state_index == 0):
-                            current_state_index = 2
+                            current_state_index = 4
                         else:
                             current_state_index -= 1
                         button0_pressed = False
@@ -190,12 +229,6 @@ while done==False:
         textPrint.unindent()
         
         textPrint.unindent()
-
-        #print data[0]
-        #arduino.write(struct.pack('>4B',data[0],data[1],data[2],data[3]))
-        #data2 = arduino.readline()
-        #if (data2):
-        #    print data2
     # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
 
     k = int(js[0] * 127) + 128
@@ -203,15 +236,32 @@ while done==False:
     m = int(js[2] * 127) + 128
     n = int(js[3] * 127) + 128
 
-    shared = {"Axis_0":k, "Axis_1":l, "Axis_2":m, "Axis_3":n, "s0": state[0],"s1": state[1], "s2": state[2]}
+    shared = {"Axis_0":k, "Axis_1":l, "Axis_2":m, "Axis_3":n, "rate": state[0],"rot_speed": state[1], "veh_speed":state[2], "show_js": state[3], "show_vehicle": state[4], "current_state_index": current_state_index, "m0_rpm": state[5], "m1_rpm": state[6], "m2_rpm": state[7], "battery": state[8], "shot": js[4]}
+    
     fp = open("shared.pkl","w")
     pickle.dump(shared,fp)
     
-    #print js axis values
-    #print(k)
     
     #write joystick value to arduino
-    #ser.write(struct.pack('>5B',k,l,m,n,js[4]))
+    if(count < state[0]):
+        ser.write(struct.pack('>10B',k,l,m,n,js[4],count,state[0],rate2,state[1],state[2]))
+        #print "written", count
+        count +=1
+    else:
+        #print ser.in_waiting
+        updated = False
+        while ser.in_waiting:
+            rcv_data = str(ser.readline())[:-2].split(',')
+            #print rcv_data
+            count = 0
+            updated = True
+        if updated:
+            #print "received datas, 1: ", rcv_data[0], " 2: ", rcv_data[1], " 3: ", rcv_data[2]
+            print rcv_data
+            state[5] = rcv_data[0]  #m0_rpm
+            state[6] = rcv_data[2]  #m1_rpm
+            state[7] = rcv_data[4]  #m2_rpm
+            state[8] = rcv_data[6]  #batt
     
     #time delay is required if target microcontroller takes more time to complete a loop
     time.sleep(0.1)        
@@ -225,4 +275,7 @@ while done==False:
 # Close the window and quit.
 # If you forget this line, the program will 'hang'
 # on exit if running from IDLE.
+params = {"rate": state[0], "rot_speed": state[1], "veh_speed": state[2], "show_js": state[3], "show_vehicle": state[4]}
+fp = open("parameters.pkl","w")
+pickle.dump(params,fp)
 pygame.quit ()
