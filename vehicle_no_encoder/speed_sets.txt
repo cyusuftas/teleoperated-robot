@@ -1,0 +1,70 @@
+SET 1:
+
+if(theta > -2.355 && theta < -0.785){
+      set_speed_1 = 0;
+      set_speed_2 = 78;
+      set_speed_3 = 75;
+    }else if(theta > 0.785 && theta < 2.355){
+      set_speed_1 = 0;
+      set_speed_2 = 75;
+      set_speed_3 = 78;
+    }else if(theta > -0.785 && theta < 0.785){
+      set_speed_1 = 75;
+      set_speed_2 = 53;
+      set_speed_3 = 53;
+    }else if(theta > 2.355 || theta < -2.355){
+      set_speed_1 = 75;
+      set_speed_2 = 53;
+      set_speed_3 = 53;
+    }else{
+      set_speed_1 = 0;
+      set_speed_2 = 0;
+      set_speed_3 = 0;
+    }
+
+ SET 2:
+
+ if(theta > -2.355 && theta < -0.785){
+      set_speed_1 = 0;
+      set_speed_2 = 98;
+      set_speed_3 = 95;
+    }else if(theta > 0.785 && theta < 2.355){
+      set_speed_1 = 0;
+      set_speed_2 = 95;
+      set_speed_3 = 98;
+    }else if(theta > -0.785 && theta < 0.785){
+      set_speed_1 = 103;
+      set_speed_2 = 68;
+      set_speed_3 = 68;
+    }else if(theta > 2.355 || theta < -2.355){
+      set_speed_1 = 110;
+      set_speed_2 = 60;
+      set_speed_3 = 60;
+    }else{
+      set_speed_1 = 0;
+      set_speed_2 = 0;
+      set_speed_3 = 0;
+    }
+
+SET 3:
+ if(theta > -2.355 && theta < -0.785){
+      set_speed_1 = 0;
+      set_speed_2 = 128;
+      set_speed_3 = 125;
+    }else if(theta > 0.785 && theta < 2.355){
+      set_speed_1 = 0;
+      set_speed_2 = 125;
+      set_speed_3 = 128;
+    }else if(theta > -0.785 && theta < 0.785){
+      set_speed_1 = 123;
+      set_speed_2 = 78;
+      set_speed_3 = 78;
+    }else if(theta > 2.355 || theta < -2.355){
+      set_speed_1 = 135;
+      set_speed_2 = 75;
+      set_speed_3 = 75;
+    }else{
+      set_speed_1 = 0;
+      set_speed_2 = 0;
+      set_speed_3 = 0;
+    }
