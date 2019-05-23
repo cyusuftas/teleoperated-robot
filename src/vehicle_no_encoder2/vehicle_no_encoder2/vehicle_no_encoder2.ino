@@ -15,11 +15,13 @@ int set_speed_1 = 0;
 int set_speed_2 = 0;
 int set_speed_3 = 0;
 
-int speed_mode = 0;
+//int speed_mode = 0;
 int mode_changed = 0;
 
+const int solenoid_pin = 11;
+
 RF24 radio(9, 10); // CE, CSN
-const byte address[6] = "00011";
+const byte addresses[][6] = {"00001", "00002"};
 
 struct Message{
   uint8_t js0;
@@ -27,8 +29,20 @@ struct Message{
   uint8_t js2;
   uint8_t js3;
   uint8_t js_button;
-};
-Message k,lm;
+  int count;
+  uint8_t rate;
+  uint8_t speed_mode;
+} k, lm;
+
+struct Telemetry{
+  uint8_t a;
+  uint8_t b;
+  uint8_t m1_rpm;
+  uint8_t m2_rpm;
+  uint8_t m3_rpm;
+  uint8_t speed_mode;
+  int battery;
+} telem;
 
 int mag = 0;
 
@@ -47,7 +61,7 @@ const int m3_in1 = 26;
 const int m3_in2 = 28;
 const int m3_en = 8;
 
-//encoders
+//encoder connections
 const int pin_a_1 = 2;
 const int pin_b_1 = 3;
 const int pin_a_2 = 18;
@@ -55,7 +69,26 @@ const int pin_b_2 = 19;
 const int pin_a_3 = 20;
 const int pin_b_3 = 21;
 
+//encoder variables
+int encoder_1 = 0;
+int m_direction_1 =0;
+double pv_speed_1 = 0;
+int timer1_counter; //for timer
+
+int encoder_2 = 0;
+int m_direction_2 = 0;
+double pv_speed_2 =0;
+int timer3_counter; //for timer
+
+int encoder_3 = 0;
+int m_direction_3 = 0;
+double pv_speed_3 = 0;
+int timer5_counter; //for timer
+
 void setup() {
+  pinMode(solenoid_pin, OUTPUT);
+  digitalWrite(solenoid_pin, HIGH);
+  
   pinMode(LED_BUILTIN, OUTPUT);
   
   pinMode(pin_a_1,INPUT_PULLUP);
@@ -63,22 +96,61 @@ void setup() {
   pinMode(m1_in1,OUTPUT);
   pinMode(m1_in2,OUTPUT);
   pinMode(m1_en,OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(pin_a_1), detect_a_1, RISING);
 
   pinMode(pin_a_2,INPUT_PULLUP);
   pinMode(pin_b_2,INPUT_PULLUP);
   pinMode(m2_in1,OUTPUT);
   pinMode(m2_in2,OUTPUT);
   pinMode(m2_en,OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(pin_a_2), detect_a_2, RISING);
 
   pinMode(pin_a_3,INPUT_PULLUP);
   pinMode(pin_b_3,INPUT_PULLUP);
   pinMode(m3_in1,OUTPUT);
   pinMode(m3_in2,OUTPUT);
-  pinMode(m3_en,OUTPUT);     
+  pinMode(m3_en,OUTPUT);  
+  attachInterrupt(digitalPinToInterrupt(pin_a_3), detect_a_3, RISING);
+
+  //--------------------------timer setup
+  noInterrupts();           // disable all interrupts
+  TCCR1A = 0;
+  TCCR1B = 0;
+  
+  timer1_counter = 34286;   // preload timer 65536-16MHz/256/2Hz
+  
+  TCNT1 = timer1_counter;   // preload timer
+  TCCR1B |= (1 << CS12);    // 256 prescaler 
+  TIMSK1 |= (1 << TOIE1);   // enable timer overflow interrupt
+
+
+  TCCR3A = 0;
+  TCCR3B = 0;
+  
+  timer3_counter = 34286;   // preload timer 65536-16MHz/256/2Hz
+  
+  TCNT3 = timer3_counter;   // preload timer
+  TCCR3B |= (1 << CS32);    // 256 prescaler 
+  TIMSK3 |= (1 << TOIE3);   // enable timer overflow interrupt
+
+
+  TCCR5A = 0;
+  TCCR5B = 0;
+  
+  timer5_counter = 34286;   // preload timer 65536-16MHz/256/2Hz
+  
+  TCNT5 = timer5_counter;   // preload timer
+  TCCR5B |= (1 << CS52);    // 256 prescaler 
+  TIMSK5 |= (1 << TOIE5);   // enable timer overflow interrupt
+  
+  
+  interrupts();             // enable all interrupts
+  //--------------------------timer setup
   
   Serial.begin(9600);
   radio.begin();
-  radio.openReadingPipe(0, address);
+  radio.openWritingPipe(addresses[0]); // 00001
+  radio.openReadingPipe(1, addresses[1]); // 00002
   radio.setPALevel(RF24_PA_MAX);
   radio.setDataRate(RF24_250KBPS);
   radio.startListening();
@@ -92,25 +164,45 @@ void setup() {
   pinMode(m3_in1,OUTPUT);     //motor3 in3
   pinMode(m3_in2,OUTPUT);     //motor3 in4
   pinMode(m3_en,OUTPUT);     //motor3 enB
-
-  pinMode(12,OUTPUT);
+  
   k.js0 = 127;
   k.js1 = 127;
   k.js2 = 127;
   k.js3 = 127;
-  
+
+  telem.a = 3;
+  telem.b = 10;
+  telem.battery = 89;
+  k.speed_mode = 2;  
 }
-void loop() {  
+void loop() {
   if(radio.available()) {
     lm = k;
     radio.read(&k, sizeof(k));
+  }else{
+    //Serial.println("a");
+  }
+  
+  if(k.count == k.rate - 1){
+    radio.stopListening();
+    //Serial.println(telem.a);
+    telem.m1_rpm = pv_speed_1;
+    telem.m2_rpm = pv_speed_2;
+    telem.m3_rpm = pv_speed_3;
+    telem.battery = map(analogRead(A4),0,1023,0,500);
+    radio.write(&telem, sizeof(telem));
+    if(telem.a > 50){
+      telem.a = 0;
+    }else{
+      telem.a += 1;
+    }
+    //Serial.println("telemetry sent");
+    radio.startListening();
   }
 
+  
+  
   if(k.js0 == 0 && k.js1 == 0 && k.js2 == 0 && k.js3 == 0){
-//    k.js0 = 127;
-//    k.js1 = 127;
-//    k.js2 = 127;
-//    k.js3 = 127;
     k = lm;
   }
 
@@ -123,23 +215,23 @@ void loop() {
   Serial.print(" ");
   Serial.print(k.js3);
   Serial.print(" ");
-  Serial.print(speed_mode);
+  Serial.print(k.js_button);
   Serial.println(" ");
   
-  if(k.js_button){
-    if(mode_changed == 0){
-      if(speed_mode == 3){
-        speed_mode = 0;
-        mode_changed = 1;
-      }else{
-        speed_mode += 1;
-        mode_changed = 1;
-      }
-    }
-    digitalWrite(12,HIGH);
+  if(k.js_button == 1){
+//    if(mode_changed == 0){
+//      if(k.speed_mode == 3){
+//        k.speed_mode = 0;
+//        mode_changed = 1;
+//      }else{
+//        k.speed_mode += 1;
+//        mode_changed = 1;
+//      }
+//    }
+    digitalWrite(solenoid_pin,LOW);
   }else{
-    digitalWrite(12,LOW);
-    mode_changed = 0;
+    digitalWrite(solenoid_pin,HIGH);
+    //mode_changed = 0;
   }
 
   ch1 = k.js0 - 127;
@@ -170,7 +262,13 @@ void loop() {
 
     float w0 = -Vx;
     float w1 = 0.5*Vx - sqrt3o2 * Vy;
-    float w2 = 0.5*Vx + sqrt3o2 * Vy; 
+    float w2 = 0.5*Vx + sqrt3o2 * Vy;
+
+//    Serial.print(w0);
+//    Serial.print(" ");
+//    Serial.print(w1);
+//    Serial.print(" ");
+//    Serial.println(w2);
 
     if(w0 < 0){
       digitalWrite(m1_in1,LOW);
@@ -198,76 +296,81 @@ void loop() {
     
 
     if(theta > -2.355 && theta < -0.785){
-      if(speed_mode == 0){
+      //Serial.println("forward");
+      if(k.speed_mode == 0){
         set_speed_1 = 0;
         set_speed_2 = 78;
         set_speed_3 = 75;
-      }else if(speed_mode == 1){
+      }else if(k.speed_mode == 1){
         set_speed_1 = 0;
         set_speed_2 = 98;
         set_speed_3 = 95;
-      }else if(speed_mode == 2){
+      }else if(k.speed_mode == 2){
         set_speed_1 = 0;
         set_speed_2 = 125;
         set_speed_3 = 128;
-      }else if(speed_mode == 3){
+      }else if(k.speed_mode == 3){
         set_speed_1 = 0;
-        set_speed_2 = 225;
-        set_speed_3 = 228;
+        set_speed_2 = 175;
+        set_speed_3 = 175;
       }
       
     }else if(theta > 0.785 && theta < 2.355){
-      if(speed_mode == 0){
+      //Serial.println("backward");
+      if(k.speed_mode == 0){
         set_speed_1 = 0;
-        set_speed_2 = 75;
+        set_speed_2 = 82;
         set_speed_3 = 78;
-      }else if(speed_mode == 1){
+      }else if(k.speed_mode == 1){
         set_speed_1 = 0;
-        set_speed_2 = 95;
+        set_speed_2 = 103;
         set_speed_3 = 98;
-      }else if(speed_mode == 2){
+      }else if(k.speed_mode == 2){
         set_speed_1 = 0;
-        set_speed_2 = 125;
+        set_speed_2 = 135;
         set_speed_3 = 128;
-      }else if(speed_mode == 3){
+      }else if(k.speed_mode == 3){
         set_speed_1 = 0;
-        set_speed_2 = 225;
-        set_speed_3 = 228;
+        set_speed_2 = 185;
+        set_speed_3 = 175;
       }
       
     }else if(theta > -0.785 && theta < 0.785){
-      if(speed_mode == 0){
+      //Serial.println("right");
+      if(k.speed_mode == 0){
         set_speed_1 = 75;
         set_speed_2 = 53;
         set_speed_3 = 53;
-      }else if(speed_mode == 1){
+      }else if(k.speed_mode == 1){
         set_speed_1 = 103;
         set_speed_2 = 68;
         set_speed_3 = 68;
-      }else if(speed_mode == 2){
+      }else if(k.speed_mode == 2){
         set_speed_1 = 123;
         set_speed_2 = 78;
         set_speed_3 = 78;
-      }else if(speed_mode == 3){
+      }else if(k.speed_mode == 3){
         set_speed_1 = 213;
         set_speed_2 = 100;
         set_speed_3 = 100;
       }
       
     }else if(theta > 2.355 || theta < -2.355){
-      if(speed_mode == 0){
+      //Serial.println("left");
+      if(k.speed_mode == 0){
         set_speed_1 = 75;
         set_speed_2 = 53;
         set_speed_3 = 53;
-      }else if(speed_mode == 1){
+      }else if(k.speed_mode == 1){
         set_speed_1 = 110;
         set_speed_2 = 60;
         set_speed_3 = 60; 
-      }else if(speed_mode == 2){
+      }else if(k.speed_mode == 2){
+        //Serial.println("mode: 2");
         set_speed_1 = 135;
         set_speed_2 = 75;
         set_speed_3 = 75;
-      }else if(speed_mode == 3){
+      }else if(k.speed_mode == 3){
         set_speed_1 = 245;
         set_speed_2 = 95;
         set_speed_3 = 95;
@@ -322,5 +425,38 @@ void loop() {
     analogWrite(m2_en,set_speed_2);
     analogWrite(m3_en,set_speed_3);
   }
-  delay(10);
+  delay(20);
+}
+
+void detect_a_1() {
+  encoder_1 +=1;
+  m_direction_1 = digitalRead(pin_b_1);
+}
+ISR(TIMER1_OVF_vect)        // interrupt service routine - tick every 0.5sec
+{
+  TCNT1 = timer1_counter;   // set timer
+  pv_speed_1 = 60*(encoder_1 /200.0)*3*0.82f/0.5;
+  encoder_1 =0;
+}
+
+void detect_a_2() {
+  encoder_2 +=1;
+  m_direction_2 = digitalRead(pin_b_2);
+}
+ISR(TIMER3_OVF_vect)        // interrupt service routine - tick every 0.5sec
+{
+  TCNT3 = timer3_counter;   // set timer
+  pv_speed_2 = 60*(encoder_2 /200.0)*3*0.82 /0.5;
+  encoder_2 =0;
+}
+
+void detect_a_3() {
+  encoder_3 +=1;
+  m_direction_3 = digitalRead(pin_b_3);
+}
+ISR(TIMER5_OVF_vect)        // interrupt service routine - tick every 0.5sec
+{
+  TCNT5 = timer5_counter;   // set timer
+  pv_speed_3 = 60*(encoder_3 /200.0)*3*0.82/0.5;
+  encoder_3 =0;
 }

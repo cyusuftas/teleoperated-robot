@@ -1,11 +1,12 @@
 import pygame
 import serial, time, struct
+import pickle
 
 #arduinoData = serial.Serial('COM4',9600)
-ser = serial.Serial('COM10', 9600)
+ser = serial.Serial('COM29', 9600)
 
 #wait for serial connection before write operation
-time.sleep(2)
+time.sleep(1)
 
 # Define some colors
 BLACK    = (   0,   0,   0)
@@ -46,7 +47,7 @@ pygame.init()
 size = [500, 700]
 screen = pygame.display.set_mode(size)
 
-pygame.display.set_caption("My Game")
+pygame.display.set_caption("S1G6")
 
 #Loop until the user clicks the close button.
 done = False
@@ -62,6 +63,31 @@ textPrint = TextPrint()
 
 #declare an array holding joystick values
 js = [0,0,0,0,0]
+
+current_state_index = 1
+#initial state values
+state = [10, 2, 1, 1, 0, 0, 0, 0]       #rate, speed_mode, show_js, show_vehicle, m1_rpm, m2_rpm, m3_rpm, battery
+#try to read parameters saved to a file
+try:
+    fp = open("parameters.pkl")
+    parameters = pickle.load(fp)
+    state[0] = parameters["rate"]
+    state[1] = parameters["speed_mode"]
+    state[2] = parameters["show_js"]
+    state[3] = parameters["show_vehicle"]
+    
+except:
+    print "An exception occurred"
+
+button1_pressed = False
+button5_pressed = False
+button2_pressed = False
+button0_pressed = False
+
+#count = 0
+rcv_data = [0, 0, 0]    #param_A, param_B, param_C
+updated = False
+#rate2 = 5
 
 # -------- Main Program Loop -----------
 while done==False:
@@ -127,6 +153,70 @@ while done==False:
             #take button info and save it into array 
             if i == 11:
                 js[4] = int(button)
+
+            if i == 1:
+                if(not button):
+                    button1_pressed = False
+                if(not button1_pressed):
+                    if(button):
+                        print "button 1 pressed"
+                        if current_state_index == 0:
+                            state[current_state_index] += 1 
+                        elif current_state_index == 1:
+                            if state[current_state_index] == 3:
+                                state[current_state_index] = 0
+                            else:
+                                state[current_state_index] += 1
+                        elif current_state_index == 2 or current_state_index == 3:
+                            if state[current_state_index] == 1:
+                                state[current_state_index] = 0
+                            else:
+                                state[current_state_index] = 1
+                        button1_pressed = True
+            if i == 5:
+                if(not button):
+                    button5_pressed = False
+                if(not button5_pressed):
+                    if(button):
+                        print "button 5 pressed"
+                        if current_state_index == 0:
+                            state[current_state_index] -= 1 
+                        if current_state_index == 1:
+                            if state[current_state_index] == 0:
+                                state[current_state_index] = 3
+                            else:
+                                state[current_state_index] -= 1
+                        elif current_state_index == 2 or current_state_index == 3:
+                            if state[current_state_index] == 1:
+                                state[current_state_index] = 0
+                            else:
+                                state[current_state_index] = 1
+                        button5_pressed = False
+            if i == 2:
+                if(not button):
+                    button2_pressed = False
+                if(not button2_pressed):
+                    if(button):
+                        print "button 2 pressed"
+                        if(current_state_index == 3):
+                            current_state_index = 0
+                        else:
+                            current_state_index += 1
+                        button2_pressed = False
+
+            if i == 0:
+                if(not button):
+                    button0_pressed = False
+                if(not button0_pressed):
+                    if(button):
+                        print "button 0 pressed"
+                        if(current_state_index == 0):
+                            current_state_index = 3
+                        else:
+                            current_state_index -= 1
+                        button0_pressed = False
+
+
             textPrint.printa(screen, "Button {:>2} value: {}".format(i,button) )
         textPrint.unindent()
             
@@ -151,15 +241,35 @@ while done==False:
     # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
 
     k = int(js[0] * 127) + 128
-    l = int(js[1] * 127) + 128
+    l = int(-js[1] * 127) + 128
     m = int(js[2] * 127) + 128
     n = int(js[3] * 127) + 128
     
     #print js axis values
-    #print(k)
+    #print k, " ", l, " ", m, " ", n
+
+    #print current_state_index
+    #print state
     
     #write joystick value to arduino
-    ser.write(struct.pack('>5B',k,l,m,n,js[4]))
+    ser.write(struct.pack('>7B',k,l,m,n,js[4],state[0],state[1]))
+
+    #receive data from arduino
+    updated = False
+    while ser.in_waiting:
+        rcv_data = str(ser.readline())[:-2].split(',')
+        #print rcv_data
+        updated = True
+    if updated:
+        state[4] = rcv_data[2]  #m0_rpm
+        state[5] = rcv_data[3]  #m1_rpm
+        state[6] = rcv_data[4]  #m2_rpm
+        state[7] = rcv_data[5]  #batt
+
+    shared = {"Axis_0":k, "Axis_1":l, "Axis_2":m, "Axis_3":n, "rate": state[0], "speed_mode":state[1], "show_js": state[2], "show_vehicle": state[3], "current_state_index": current_state_index, "m1_rpm": state[4], "m2_rpm": state[5], "m3_rpm": state[6], "battery": state[7], "shot": js[4]}
+    
+    fp = open("shared.pkl","w")
+    pickle.dump(shared,fp)
 
     #time delay is required if target microcontroller takes more time to complete a loop
     time.sleep(0.1)        
@@ -173,4 +283,7 @@ while done==False:
 # Close the window and quit.
 # If you forget this line, the program will 'hang'
 # on exit if running from IDLE.
+params = {"rate": state[0], "show_js": state[2], "show_vehicle": state[3]}
+fp = open("parameters.pkl","w")
+pickle.dump(params,fp)
 pygame.quit ()
